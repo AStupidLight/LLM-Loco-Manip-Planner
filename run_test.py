@@ -18,12 +18,12 @@ from mock_env_mobile import MockEnvMobile
 
 # If you are in China, you may need to set the base URL 
 # Example:
-# openai.api_key = 'sk-tev4P3Q3VA0jaOl7B3qNCe8sCvQZLPRY16J0iVMhPPwhieBI'
-# openai.api_base = 'https://poloai.top/v1'
+openai.api_key = 'sk-tev4P3Q3VA0jaOl7B3qNCe8sCvQZLPRY16J0iVMhPPwhieBI'
+openai.api_base = 'https://poloai.top/v1'
 
 
-openai.api_key = 'Your OpenAI API Key'
-openai.api_base = 'If You Need'
+# openai.api_key = 'Your OpenAI API Key'
+# openai.api_base = 'If You Need'
 print(f"--- OpenAI client configured for base URL: {openai.api_base} ---")
 
 
