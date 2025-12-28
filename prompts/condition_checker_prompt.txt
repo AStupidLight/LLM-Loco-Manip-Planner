@@ -1,0 +1,62 @@
+Observation:
+The robot is at (35, 10) on floor 2. On this floor, it sees: red book at (32, 5), basket at (35, 10), red doll at (35, 10). Its hands are empty.
+
+Condition:
+the robot's hand is empty
+
+Is the condition true?
+True
+
+Observation:
+The robot is at (1, 1) on floor 1. On this floor, it sees: red toolbox at (2, 2), mug at (5, 6), book at (5, 4). It is holding a red doll in its right hand.
+
+Condition:
+the robot is holding a red doll
+
+Is the condition true?
+True
+
+Observation:
+The robot is at (0, 0) on floor 1. On this floor, it sees: red toolbox at (2, 2), mug at (5, 6), book at (5, 4). Its hands are empty.
+
+Condition:
+the robot is holding a red doll
+
+Is the condition true?
+False
+
+Observation:
+The robot is at (0, 0) on floor 1. On this floor, it sees: red toolbox at (2, 2), mug at (5, 6), book at (5, 4), red doll at (0, 0). Its hands are empty.
+
+Condition:
+the robot's hand is empty
+
+Is the condition true?
+True
+
+Observation:
+The robot is at (1, 1) on floor 1. It is holding a red doll in its right hand.
+
+Condition:
+the robot's hand is empty
+
+Is the condition true?
+False
+
+Observation:
+The robot is at (10, 5) on floor 2.
+
+Condition:
+the robot is on floor 2
+
+Is the condition true?
+True
+
+Observation:
+The robot is at (1, 1) on floor 1.
+
+Condition:
+the robot is on floor 2
+
+Is the condition true?
+False

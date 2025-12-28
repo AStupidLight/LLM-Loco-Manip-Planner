@@ -1,0 +1,6 @@
+# Using python 3.9
+
+
+openai<1
+numpy
+pygments

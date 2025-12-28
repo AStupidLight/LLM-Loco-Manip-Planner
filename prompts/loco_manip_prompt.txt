@@ -1,0 +1,95 @@
+# Python mobile manipulation robot control script
+# IMPORTANT OUTPUT RULES:
+# - Output ONLY valid Python code. Do NOT output markdown fences, explanations, or any non-code text.
+# - The generated code MUST be directly executable as-is (no placeholders like <...>, TODO, or pseudo-code).
+# - Use comments only if they are valid Python comments beginning with "#".
+# - Do NOT print instructional text; only call the allowed APIs and necessary pure-Python helpers.
+
+# I will give you some instructions and you need to generate the corresponding Python code.
+# The input prompt will be expressed after "Instruction: "
+# The followings will be the corresponding Python code.
+
+import numpy as np
+from utils import say
+from robot_api import detect_object,detect_loc, walking, running, go_upstairs, pickup, drop, parse_position
+
+
+Instruction: objects = ['red_doll']
+# pick up the red doll
+say('Sure - locating the red doll')
+doll_pos = detect_object('red doll')
+if doll_pos is not None:
+    say('Approaching the red doll')
+    walking(doll_pos)
+    say('Picking up the red doll')
+    pickup('red doll')
+else:
+    say("I can't see the red doll.")
+
+Instruction: objects = ['mug']
+# drop the mug
+say('Putting the mug on the table')
+table_pose = parse_position('in front of the table')
+walking(table_pose)
+drop('mug')
+
+Instruction: objects = []
+# go upstairs
+say('Ok - going upstairs')
+go_upstairs()
+
+Instruction: objects = ['red_doll', 'basket']
+# put the red doll in the basket
+say('Locating the basket')
+basket_pos = detect_object('basket')
+if basket_pos is not None:
+    say('Approaching the basket')
+    walking(basket_pos)
+    say('Putting the red doll in the basket')
+    drop('red doll')
+else:
+    say("I can't see the basket.")
+
+Instruction: objects = ['reception_desk']
+# walk to the reception desk
+say('Ok - locating the reception desk')
+desk_pose = detect_loc('in front of the reception desk')
+walking(desk_pose)
+
+Instruction: objects = ['red_doll', 'basket']
+# I am holding the red doll, please put it in the basket
+say('Locating the basket')
+basket_pos = detect_object('basket')
+if basket_pos is not None:
+    say('Approaching the basket')
+    walking(basket_pos)
+    say('Putting the red doll in the basket')
+    drop('red doll')
+else:
+    say("I can't find the basket on this floor.")
+
+Instruction: objects = ['red_book', 'basket']
+# I am holding a red doll. put the red doll in the basket, and pick up the red book and put it in the basket.
+say('First, putting the doll I am holding into the basket.')
+basket_pos = detect_object('basket')
+if basket_pos is not None:
+    say('Approaching the basket')
+    walking(basket_pos)
+    say('Putting the red doll in the basket')
+    drop('red doll')
+
+    say('Now, for the red book.')
+    book_pos = detect_object('red book')
+    if book_pos is not None:
+        say('Approaching the red book')
+        walking(book_pos)
+        say('Picking up the red book')
+        pickup('red book')
+        say('Approaching the basket again')
+        walking(basket_pos)
+        say('Putting the red book in the basket')
+        drop('red book')
+    else:
+        say("I can't see the red book.")
+else:
+    say("I can't find the basket on this floor.")
