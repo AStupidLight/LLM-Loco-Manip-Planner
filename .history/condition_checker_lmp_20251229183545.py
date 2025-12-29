@@ -1,16 +1,15 @@
 
 import os
 from LMP import LMP
-from openai import OpenAI
 
 class ConditionCheckerLMP:
-    def __init__(self, client: OpenAI, debug=False):
+    def __init__(self, debug=False):
         # Configuration for the Condition Checker LMP
         cfg = {
             'prompt_fname': 'condition_checker_prompt',
             'stop': [], # Removed stop to allow full response
             'temperature': 0.0,
-            'model': os.environ.get("OPENAI_API_MODEL", "gpt-4-turbo"),
+            'model': os.environ.get("OPENAI_API_MODEL", "gpt-5"),
             'max_tokens': 10, # Increased max_tokens
             'query_prefix': 'Observation:\n{observation_description}\n\nCondition:\n{condition_string}\n\nIs the condition true?\n',
             'query_suffix': '',
@@ -27,7 +26,6 @@ class ConditionCheckerLMP:
         self._lmp = LMP(
             name="condition_checker",
             cfg=cfg,
-            client=client,
             fixed_vars=fixed_vars,
             variable_vars=variable_vars,
             debug=debug,
@@ -73,8 +71,7 @@ if __name__ == '__main__':
     if "OPENAI_API_KEY" not in os.environ:
         print("Error: OPENAI_API_KEY environment variable not set.")
     else:
-        test_client = OpenAI()
-        checker = ConditionCheckerLMP(client=test_client)
+        checker = ConditionCheckerLMP()
 
         # Test 1: Condition is expected to be True
         print("\n--- Running Test Case 1: True Condition ---")

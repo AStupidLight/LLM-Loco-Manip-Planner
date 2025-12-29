@@ -1,11 +1,7 @@
 
-import openai
 import os
 from time import sleep
-try:
-    from openai.error import RateLimitError, APIConnectionError
-except ImportError:
-    from openai import RateLimitError, APIConnectionError
+from openai import OpenAI, RateLimitError, APIConnectionError
 from pygments import highlight
 from pygments.lexers import PythonLexer
 from pygments.formatters import TerminalFormatter
@@ -15,9 +11,10 @@ from LLM_cache import DiskCache
 
 class LMP:
     """Language Model Program (LMP), adopted from Code as Policies."""
-    def __init__(self, name, cfg, fixed_vars, variable_vars, debug=False, env=''):
+    def __init__(self, name, cfg, client: OpenAI, fixed_vars, variable_vars, debug=False, env=''):
         self._name = name
         self._cfg = cfg
+        self._client = client
         self._debug = debug
 
         prompt_fname = self._cfg.get('prompt_fname')
@@ -72,7 +69,7 @@ class LMP:
         # check whether completion endpoint or chat endpoint is used
         if self._name != 'condition_checker' and \
             kwargs['model'] != 'gpt-3.5-turbo-instruct' and \
-            any([chat_model in kwargs['model'] for chat_model in ['gpt-3.5', 'gpt-4']]):
+            any([chat_model in kwargs['model'] for chat_model in ['gpt-3.5', 'gpt-4', 'gpt-4-turbo']]): # Added gpt-5
             # add special prompt for chat endpoint
             user1 = kwargs.pop('prompt')
             new_query = '# Query:' + user1.split('# Query:')[-1]
@@ -94,11 +91,14 @@ class LMP:
                 {"role": "user", "content": user2},
             ]
             kwargs['messages'] = messages
+            if 'stop' in kwargs:
+                kwargs.pop('stop')
             if kwargs in self._cache:
                 print('(using cache)', end=' ')
                 return self._cache[kwargs]
             else:
-                ret = openai.ChatCompletion.create(**kwargs)['choices'][0]['message']['content']
+                response = self._client.chat.completions.create(**kwargs)
+                ret = response.choices[0].message.content
                 # post processing
                 ret = ret.replace('```', '').replace('python', '').strip()
                 self._cache[kwargs] = ret
@@ -107,11 +107,14 @@ class LMP:
             # For condition_checker, we want a simple completion, not a chat exchange
             if self._name == 'condition_checker':
                 kwargs['messages'] = [{"role": "user", "content": kwargs.pop('prompt')}]
+                if 'stop' in kwargs:
+                    kwargs.pop('stop')
                 if kwargs in self._cache:
                     print('(using cache)', end=' ')
                     return self._cache[kwargs]
                 else:
-                    ret = openai.ChatCompletion.create(**kwargs)['choices'][0]['message']['content']
+                    response = self._client.chat.completions.create(**kwargs)
+                    ret = response.choices[0].message.content
                     self._cache[kwargs] = ret
                     return ret
 
@@ -119,7 +122,8 @@ class LMP:
                 print('(using cache)', end=' ')
                 return self._cache[kwargs]
             else:
-                ret = openai.Completion.create(**kwargs)['choices'][0]['text'].strip()
+                response = self._client.completions.create(**kwargs)
+                ret = response.choices[0].text.strip()
                 self._cache[kwargs] = ret
                 return ret
 

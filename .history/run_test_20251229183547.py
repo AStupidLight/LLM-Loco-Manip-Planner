@@ -1,7 +1,7 @@
 
 import sys
 import os
-from openai import OpenAI
+import openai
 import numpy as np
 import json
 import time
@@ -12,20 +12,24 @@ from condition_checker_lmp import ConditionCheckerLMP
 from mock_env_mobile import MockEnvMobile
 
 # 1. Use the specific OpenAI client details
-# NOTE: Replace the following with your actual OpenAI client details
+
+# NOTE：Replace the following with your actual OpenAI client details
+
+
 # If you are in China, you may need to set the base URL 
 # Example:
-client = OpenAI(
-    api_key='sk-tev4P3Q3VA0jaOl7B3qNCe8sCvQZLPRY16J0iVMhPPwhieBI',
-    base_url='https://poloai.top/v1'
-)
-# client = OpenAI(api_key='Your OpenAI API Key', base_url='If You Need')
-print(f"--- OpenAI client configured for base URL: {client.base_url} ---")
+openai.api_key = 'sk-tev4P3Q3VA0jaOl7B3qNCe8sCvQZLPRY16J0iVMhPPwhieBI'
+openai.api_base = 'https://poloai.top/v1'
+
+
+# openai.api_key = 'Your OpenAI API Key'
+# openai.api_base = 'If You Need'
+print(f"--- OpenAI client configured for base URL: {openai.api_base} ---")
 
 
 # 2. Create a Subtask Executor LMP for the Loco-Manip scenario
 class SubtaskExecutorLMP_Loco:
-    def __init__(self, client: OpenAI, fixed_vars: dict, variable_vars: dict, debug=False):
+    def __init__(self, fixed_vars: dict, variable_vars: dict, debug=False):
         
         prompt_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'prompts/loco_manip_prompt.txt'))
         
@@ -33,7 +37,7 @@ class SubtaskExecutorLMP_Loco:
             'prompt_fname': prompt_path,
             'stop': [],
             'temperature': 0.0,
-            'model': os.environ.get("OPENAI_API_MODEL", "gpt-4-turbo"),
+            'model': os.environ.get("OPENAI_API_MODEL", "gpt-5"),
             'max_tokens': 1024,
             'query_prefix': '\nInstruction: ',
             'query_suffix': '\n',
@@ -46,7 +50,6 @@ class SubtaskExecutorLMP_Loco:
         self._lmp = LMP(
             name="loco_manip_executor",
             cfg=cfg,
-            client=client,
             fixed_vars=fixed_vars,
             variable_vars=variable_vars,
             debug=debug,
@@ -81,7 +84,7 @@ class SubtaskExecutorLMP_Loco:
 
 # 3. Create the Master Planner for the Loco-Manip scenario
 class MasterPlannerLoco:
-    def __init__(self, client: OpenAI, debug=False):
+    def __init__(self, debug=False):
         self._debug = debug
         self._mock_env = MockEnvMobile()
         
@@ -97,9 +100,9 @@ class MasterPlannerLoco:
             'query_suffix': '\n',
             'include_context': False,
         }
-        self._meta_planner_lmp = MetaPlannerLMP(client=client, cfg_override=meta_cfg)
+        self._meta_planner_lmp = MetaPlannerLMP(cfg_override=meta_cfg)
 
-        self._condition_checker_lmp = ConditionCheckerLMP(client=client, debug=debug)
+        self._condition_checker_lmp = ConditionCheckerLMP(debug=debug)
         
         # Configure Subtask Executor
         fixed_vars_for_executor = {
@@ -115,7 +118,6 @@ class MasterPlannerLoco:
             'parse_position': self._mock_env.parse_position
         }
         self._subtask_executor_lmp = SubtaskExecutorLMP_Loco(
-            client=client,
             fixed_vars=fixed_vars_for_executor,
             variable_vars={},
             debug=debug
@@ -175,7 +177,7 @@ class MasterPlannerLoco:
 if __name__ == '__main__':
     print("--- Initializing MasterPlanner Live Mock Test for Mobile Manipulation ---")
     
-    planner = MasterPlannerLoco(client=client, debug=True)
+    planner = MasterPlannerLoco(debug=True)
     instruction = '拿起红色的娃娃，走上楼梯，然后把娃娃放进筐子里'
     planner.run(instruction)
 

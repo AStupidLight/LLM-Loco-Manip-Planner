@@ -1,16 +1,15 @@
 import json
 import os
 from LMP import LMP
-from openai import OpenAI
 
 class MetaPlannerLMP:
-    def __init__(self, client: OpenAI, debug=False, cfg_override=None):
+    def __init__(self, debug=False, cfg_override=None):
         # Configuration for the Meta Planner LMP
         cfg = {
             'prompt_fname': 'master_planner_prompt',
             'stop': ['}"'],
             'temperature': 0.0,
-            'model': os.environ.get("OPENAI_API_MODEL", "gpt-4-turbo"),
+            'model': os.environ.get("OPENAI_API_MODEL", "gpt-5"),
             'max_tokens': 1024,
             'query_prefix': '',
             'query_suffix': '',
@@ -32,7 +31,6 @@ class MetaPlannerLMP:
         self._lmp = LMP(
             name="meta_planner",
             cfg=cfg,
-            client=client,
             fixed_vars=fixed_vars,
             variable_vars=variable_vars,
             debug=debug,
@@ -83,8 +81,7 @@ if __name__ == '__main__':
     else:
         # Test Case 1: Simple sequential plan
         print("\n--- Running Test Case 1: Simple Sequential Plan ---")
-        test_client = OpenAI()
-        meta_planner = MetaPlannerLMP(client=test_client)
+        meta_planner = MetaPlannerLMP()
         try:
             plan1 = meta_planner.generate_plan("put the apple in the box")
             print("Generated Plan 1:")
