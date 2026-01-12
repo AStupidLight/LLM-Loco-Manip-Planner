@@ -1,0 +1,267 @@
+
+import os
+from openai import OpenAI
+import numpy as np
+import json
+import time
+
+from LMP import LMP
+from meta_planner_lmp import MetaPlannerLMP
+from condition_checker_lmp import ConditionCheckerLMP
+from mock_env_mobile import MockEnvMobile
+from vlm_adapters.openai_vlm_adapter import OpenAIVLMAdapter
+from vlm_adapters.mock_vlm_adapter import MockVLMAdapter
+
+# 1. Use the specific OpenAI client details
+# NOTE: Replace the following with your actual OpenAI client details
+# If you are in China, you may need to set the base URL 
+# Example:
+client = OpenAI(
+    api_key='sk-tev4P3Q3VA0jaOl7B3qNCe8sCvQZLPRY16J0iVMhPPwhieBI',
+    base_url='https://poloai.top/v1'
+)
+# client = OpenAI(api_key='Your OpenAI API Key', base_url='If You Need')
+print(f"--- OpenAI client configured for base URL: {client.base_url} ---")
+
+def _print_phase(title: str):
+    print(f"\n=== {title} ===")
+
+def _load_vlm_config(path: str) -> dict:
+    with open(path, "r") as f:
+        return json.load(f)
+
+def _build_vlm_adapter(cfg: dict):
+    provider = cfg.get("provider", "openai")
+    if provider == "openai":
+        return OpenAIVLMAdapter(cfg.get("openai", {}))
+    if provider == "mock":
+        return MockVLMAdapter(cfg.get("mock", {}))
+    raise ValueError(f"Unknown VLM provider: {provider}")
+
+def _scene_objects(obs) -> list[str]:
+    objects = []
+    for obj in obs.objects or []:
+        name = obj.get("name")
+        if name:
+            objects.append(name)
+    return objects
+
+def _scene_summary(obs) -> str:
+    objects = [obj.get("name", "") for obj in obs.objects or [] if obj.get("name")]
+    relations = []
+    for rel in obs.relations or []:
+        subj = rel.get("subj", "")
+        pred = rel.get("rel", "")
+        obj = rel.get("obj", "")
+        if subj and pred and obj:
+            relations.append(f"{subj} {pred} {obj}")
+    objects_part = ", ".join(objects) if objects else "none"
+    relations_part = "; ".join(relations) if relations else "none"
+    return f"image_id={obs.image_id}; objects: {objects_part}; relations: {relations_part}."
+
+
+# 2. Create a Subtask Executor LMP for the Loco-Manip scenario
+class SubtaskExecutorLMP_Loco:
+    def __init__(self, client: OpenAI, fixed_vars: dict, variable_vars: dict, debug=False):
+        
+        prompt_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'prompts/loco_manip_prompt.txt'))
+        
+        cfg = {
+            'prompt_fname': prompt_path,
+            'stop': [],
+            'temperature': 0.0,
+            'model': os.environ.get("OPENAI_API_MODEL", "gpt-4-turbo"),
+            'max_tokens': 1024,
+            'query_prefix': '\nInstruction: ',
+            'query_suffix': '\n',
+            'maintain_session': False,
+            'include_context': False,
+            'load_cache': False,
+            'has_return': False,
+        }
+        
+        self._lmp = LMP(
+            name="loco_manip_executor",
+            cfg=cfg,
+            client=client,
+            fixed_vars=fixed_vars,
+            variable_vars=variable_vars,
+            debug=debug,
+            env=''
+        )
+
+    def _pddl_to_natural_language(self, pddl_goals: list[str]) -> str:
+        nl_parts = []
+        for goal in pddl_goals:
+            goal = goal.strip()
+            if goal.startswith('(holding '):
+                obj = goal[len('(holding '):-1].replace('_', ' ')
+                nl_parts.append(f"pickup the {obj}")
+            elif goal.startswith('(in '):
+                obj1 = goal[len('(in '):].split(' ')[0].replace('_', ' ')
+                obj2 = goal[len('(in '):-1].split(' ')[1].replace('_', ' ')
+                nl_parts.append(f"put the {obj1} in the {obj2}")
+            elif goal == '(at upstairs)':
+                nl_parts.append("go upstairs")
+            else:
+                nl_parts.append(f"achieve {goal}")
+        
+        return ", and ".join(nl_parts) if nl_parts else "do nothing"
+
+    def execute_subtask(self, pddl_goals: list[str], observation_objects: list[str]):
+        nl_query = self._pddl_to_natural_language(pddl_goals)
+        objects_str = json.dumps(observation_objects).replace('"', "'")
+        # Construct the query to match the prompt examples exactly (no "Query:")
+        query = f"objects = {objects_str}\n# {nl_query}"
+        self._lmp(query)
+
+
+# 3. Create the Master Planner for the Loco-Manip scenario
+class MasterPlannerLoco:
+    def __init__(self, client: OpenAI, debug=False):
+        self._debug = debug
+        self._mock_env = MockEnvMobile()
+        config_path = os.environ.get(
+            "VLM_CONFIG",
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "vlm_adapters/config.json"))
+        )
+        self._vlm_cfg = _load_vlm_config(config_path)
+        self._vlm_adapter = _build_vlm_adapter(self._vlm_cfg)
+        self._vlm_image = self._vlm_cfg.get("test", {}).get("image", "")
+        self._vlm_result_image = self._vlm_cfg.get("test", {}).get("result_image", "")
+        if self._vlm_image:
+            self._vlm_image = os.path.abspath(os.path.join(os.path.dirname(__file__), self._vlm_image))
+        if self._vlm_result_image:
+            self._vlm_result_image = os.path.abspath(
+                os.path.join(os.path.dirname(__file__), self._vlm_result_image)
+            )
+        
+        # Configure Meta Planner
+        meta_prompt_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'prompts/meta_planner_loco_prompt.txt'))
+        meta_cfg = {
+            'prompt_fname': meta_prompt_path,
+            'stop': ['#'],
+            'temperature': 0.0,
+            'model': os.environ.get("OPENAI_API_MODEL", "gpt-3.5-turbo"),
+            'max_tokens': 1024,
+            'query_prefix': '\n# High-level instruction: ',
+            'query_suffix': '\n',
+            'include_context': False,
+            'load_cache': False,
+        }
+        self._meta_planner_lmp = MetaPlannerLMP(client=client, cfg_override=meta_cfg)
+
+        self._condition_checker_lmp = ConditionCheckerLMP(client=client, debug=debug)
+        
+        # Configure Subtask Executor
+        fixed_vars_for_executor = {
+            'np': np,
+            'say': self._mock_env.say,
+            'detect_object': self._mock_env.detect_object,
+            'detect_loc': self._mock_env.detect_loc,
+            'walking': self._mock_env.walking,
+            'running': self._mock_env.running,
+            'go_upstairs': self._mock_env.go_upstairs,
+            'pickup': self._mock_env.pickup,
+            'drop': self._mock_env.drop,
+            'parse_position': self._mock_env.parse_position
+        }
+        self._subtask_executor_lmp = SubtaskExecutorLMP_Loco(
+            client=client,
+            fixed_vars=fixed_vars_for_executor,
+            variable_vars={},
+            debug=debug
+        )
+
+    def _get_vlm_observation(self, instruction: str, image_path: str):
+        if not image_path:
+            raise ValueError("VLM image path missing in vlm_adapters/config.json.")
+        vlm_context = self._vlm_cfg.get("test", {}).get("context", {})
+        vlm_obs = self._vlm_adapter.predict(
+            image=image_path,
+            prompt=instruction,
+            context=vlm_context
+        )
+        vlm_summary = _scene_summary(vlm_obs)
+        vlm_objects = _scene_objects(vlm_obs)
+        return vlm_obs, vlm_summary, vlm_objects
+
+    def run(self, user_instruction: str):
+        _print_phase("Task Start")
+        print(f"Instruction: {user_instruction}")
+
+        vlm_obs, vlm_summary, _ = self._get_vlm_observation(user_instruction, self._vlm_image)
+        _print_phase("VLM Observation (Meta Planner)")
+        print(json.dumps(vlm_obs.to_dict(), indent=2, ensure_ascii=False))
+
+        meta_instruction = f"{user_instruction}\n\n# VLM Observation:\n{vlm_summary}\n"
+        plan_data = self._meta_planner_lmp.generate_plan(meta_instruction)
+        # plan_data['plan'][2]['exit_condition'] = "the robot's hands are empty"
+
+        
+        _print_phase("Meta Plan")
+        print(json.dumps(plan_data, indent=4))
+        
+        for i, subtask in enumerate(plan_data['plan']):
+            _print_phase(f"Subtask {i + 1}/{len(plan_data['plan'])}: {subtask['sub_task_name']}")
+
+            loop_count = 0
+            max_loops = 3 # Safety break
+            has_executed = False
+            while True:
+                if loop_count >= max_loops:
+                    print("--- Max loops reached for subtask. Moving to next. ---")
+                    break
+
+                _, step_vlm_summary, step_vlm_objects = self._get_vlm_observation(
+                    f"{user_instruction}\nSubtask: {subtask['sub_task_name']}",
+                    self._vlm_image
+                )
+                if subtask['exit_condition']:
+                    condition_image = self._vlm_result_image if has_executed else self._vlm_image
+                    _, result_summary, _ = self._get_vlm_observation(
+                        f"{user_instruction}\nCheck condition: {subtask['exit_condition']}",
+                        condition_image
+                    )
+                    observation_description = f"VLM observation: {result_summary}"
+                    source_label = "result image" if has_executed else "scene image"
+                    print(f"Observation (VLM, {source_label}): {observation_description}")
+                    is_done = self._condition_checker_lmp.check_condition(
+                        observation_description, 
+                        subtask['exit_condition']
+                    )
+                    if is_done:
+                        print(f"--- Exit condition '{subtask['exit_condition']}' met. ---")
+                        break
+                
+                observation_objects = step_vlm_objects
+                print(f"Objects visible (VLM, per-step): {observation_objects}")
+                self._subtask_executor_lmp.execute_subtask(
+                    subtask['pddl'], 
+                    observation_objects
+                )
+
+                has_executed = True
+                loop_count += 1
+                time.sleep(1)
+
+            subtask['status'] = 'completed'
+        
+        _print_phase("Final Plan Status")
+        print(json.dumps(plan_data, indent=4))
+        _print_phase("Final Environment State")
+        print(f"Robot is at {self._mock_env.robot_location} on floor {self._mock_env.robot_floor}")
+        print(f"Robot hands: Left='{self._mock_env.hands['left']}', Right='{self._mock_env.hands['right']}'")
+        print(f"Objects in world: {list(self._mock_env.objects.keys())}")
+
+
+if __name__ == '__main__':
+    _print_phase("Initialize")
+    print("MasterPlanner Live Mock Test for Mobile Manipulation")
+    
+    planner = MasterPlannerLoco(client=client, debug=True)
+    instruction = '把玩具整理好'
+    planner.run(instruction)
+
+    _print_phase("Complete")
+    print("MasterPlanner Live Mock Test Complete")
